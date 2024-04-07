@@ -1,0 +1,10 @@
+secretsmanager_client = boto3.client('secretsmanager',
+                                         aws_access_key_id=cicd_envvars.aws_account_credentials_access_key,
+                                         aws_secret_access_key=cicd_envvars.aws_account_credentials_access_secret_key,
+                                         region_name=cicd_envvars.aws_account_credentials_region)
+    response = secretsmanager_client.get_secret_value(
+        SecretId=static_config.ENDPOINTS_SECRET_ID
+    )
+    dms_secrets = json.loads(response['SecretString'])
+    dms_secrets["dms_endpoints"] = json.loads(dms_secrets['dms_endpoints'])
+    dms_endpoints = dms_secrets["dms_endpoints"]
