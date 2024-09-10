@@ -1,4 +1,6 @@
-#
+# AWS Auth
+
+Python auth examples.
 
 ## Invoke
 
