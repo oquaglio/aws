@@ -3,15 +3,6 @@ data "aws_vpc" "default" {
   default = true
 }
 
-# Get a default subnet from the default VPC
-# data "aws_subnet_ids" "default" {
-#   vpc_id = data.aws_vpc.default.id
-# }
-
-# data "aws_subnet" "default" {
-#   id = data.aws_subnet_ids.default.ids[0]
-# }
-
 # Get *one* default subnet in the default VPC
 data "aws_subnet" "default" {
   filter {
@@ -32,6 +23,25 @@ data "aws_security_group" "default" {
   vpc_id = data.aws_vpc.default.id
 }
 
+resource "aws_security_group" "ssh_access" {
+  name        = "ssh-access"
+  description = "Allow SSH from anywhere"
+  vpc_id      = data.aws_vpc.default.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(
+    module.common_tags.tags,
+    {
+      Name = "ssh-access"
+    }
+  )
+}
 
 resource "aws_instance" "dl_x86_gpu" {
   ami           = "ami-063f6c7dfdd5c1488" # x86_64 DL Base AMI (Amazon Linux 2023)
@@ -39,8 +49,13 @@ resource "aws_instance" "dl_x86_gpu" {
   key_name      = "ec2-key-pair"          # replace with your actual key name
 
   # Use default VPC + subnet
-  subnet_id                   = data.aws_subnet.default.id
-  vpc_security_group_ids      = [data.aws_security_group.default.id]
+  subnet_id = data.aws_subnet.default.id
+
+  # Use default VPC SG and custom SSH security group
+  vpc_security_group_ids = [
+    aws_security_group.ssh_access.id,
+    data.aws_security_group.default.id
+  ]
   associate_public_ip_address = true
 
   root_block_device {
@@ -49,7 +64,7 @@ resource "aws_instance" "dl_x86_gpu" {
   }
 
   tags = merge(
-    local.common_tags,
+    module.common_tags.tags,
     {
       Name = "dl-x86-gpu"
     }
