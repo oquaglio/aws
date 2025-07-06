@@ -5,6 +5,9 @@ resource "aws_vpc" "main" {
   tags = {
     Name = "vpc-demo"
     Project = var.project_name
+    Environment = "dev"
+    ManagedBy = "terraform"
+    Owner       = "otto"
   }
 }
 
