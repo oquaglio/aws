@@ -10,9 +10,12 @@ Source:    Your IP (or 0.0.0.0/0 for testing - all ips)
 
 Add any other ports as required. E.g. Jupyter
 
-## Key Pairs
+## Manual Step: Create a Key Pair
 
 Create under AWS Console -> EC2 -> Key Pairs
+
+My naming conv:
+ec2-key-pair
 
 ## SSH
 
