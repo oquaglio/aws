@@ -12,6 +12,7 @@ crash.log
 
 # Terraform plan files
 *.plan
+tfplan*
 
 # CLI local config
 .terraform/
