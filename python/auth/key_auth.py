@@ -1,13 +1,18 @@
-import boto3
-import json
 import argparse
+import json
+
+import boto3
+
+# Using using long-term credentials (e.g. from .aws/credentials)
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Get secrets from AWS Secrets Manager.")
 parser.add_argument("--access-key", required=True, help="AWS access key ID")
 parser.add_argument("--secret-key", required=True, help="AWS secret access key")
 parser.add_argument("--region", required=True, help="AWS region")
-parser.add_argument("--secret-id", required=True, help="Secret ID in AWS Secrets Manager")
+parser.add_argument(
+    "--secret-id", required=True, help="Secret ID in AWS Secrets Manager"
+)
 
 # Parse arguments from the command line
 args = parser.parse_args()
