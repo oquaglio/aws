@@ -1,0 +1,10 @@
+# Copy this file to terraform.tfvars and fill in your values
+
+# Your AWS Account ID (single account simulation)
+account_id = "111111111111"
+
+# AWS region (optional, defaults to us-east-1)
+aws_region = "us-east-1"
+
+# Project name for resource naming (optional)
+project_name = "cross-account-demo"

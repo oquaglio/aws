@@ -1,5 +1,10 @@
 # create_kms_key
 
+## Prereqs
+
+Set AWS env vars.
+
+
 ## Describe key
 ```sh
 aws kms describe-key --key-id alias/my-app-key
