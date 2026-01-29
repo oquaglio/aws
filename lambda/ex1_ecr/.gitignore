@@ -6,6 +6,7 @@
 *.tfplan
 *.tfvars
 !example.tfvars
+tfplan*
 
 # Crash logs
 crash.log
