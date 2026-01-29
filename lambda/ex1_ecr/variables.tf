@@ -28,6 +28,12 @@ variable "image_tag" {
   default     = "latest"
 }
 
+variable "image_version" {
+  description = "Semantic version for the image (e.g., 1.0.0, 2.1.3)"
+  type        = string
+  default     = "0.1.0"
+}
+
 variable "image_retention_count" {
   description = "Number of images to retain in ECR"
   type        = number

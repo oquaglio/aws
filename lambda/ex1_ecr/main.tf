@@ -79,9 +79,24 @@ resource "aws_ecr_lifecycle_policy" "lambda" {
         }
       },
       {
-        # Rule 4: Expire old images that don't match protected patterns
-        # Catches any other tagged images older than 30 days
+        # Rule 4: Keep last N semver releases (v* tags)
+        # These are production releases and should be retained longer
         rulePriority = 4
+        description  = "Keep last ${var.image_retention_count * 2} semver releases"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["v"]
+          countType     = "imageCountMoreThan"
+          countNumber   = var.image_retention_count * 2
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        # Rule 5: Expire old images that don't match protected patterns
+        # Catches any other tagged images older than 30 days
+        rulePriority = 5
         description  = "Expire other tagged images older than 30 days"
         selection = {
           tagStatus     = "tagged"
@@ -107,6 +122,7 @@ resource "null_resource" "docker_build_push" {
     dockerfile_hash = filemd5("${path.module}/src/Dockerfile")
     app_hash        = filemd5("${path.module}/src/app.py")
     image_tag       = var.image_tag
+    image_version   = var.image_version
   }
 
   provisioner "local-exec" {
@@ -118,8 +134,9 @@ resource "null_resource" "docker_build_push" {
       GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
       TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
       PRIMARY_TAG="${var.image_tag}"
+      VERSION="v${var.image_version}"
 
-      echo "Building with tags: $PRIMARY_TAG, sha-$GIT_SHA, ts-$TIMESTAMP, latest"
+      echo "Building with tags: $PRIMARY_TAG, $VERSION, sha-$GIT_SHA, ts-$TIMESTAMP, latest"
 
       # Login to ECR
       aws ecr get-login-password --region ${local.region} | docker login --username AWS --password-stdin ${local.ecr_url}
@@ -128,17 +145,19 @@ resource "null_resource" "docker_build_push" {
       docker build -t "$REPO_URL:$PRIMARY_TAG" ${path.module}/src
 
       # Apply additional tags
+      docker tag "$REPO_URL:$PRIMARY_TAG" "$REPO_URL:$VERSION"
       docker tag "$REPO_URL:$PRIMARY_TAG" "$REPO_URL:sha-$GIT_SHA"
       docker tag "$REPO_URL:$PRIMARY_TAG" "$REPO_URL:ts-$TIMESTAMP"
       docker tag "$REPO_URL:$PRIMARY_TAG" "$REPO_URL:latest"
 
       # Push all tags
       docker push "$REPO_URL:$PRIMARY_TAG"
+      docker push "$REPO_URL:$VERSION"
       docker push "$REPO_URL:sha-$GIT_SHA"
       docker push "$REPO_URL:ts-$TIMESTAMP"
       docker push "$REPO_URL:latest"
 
-      echo "Successfully pushed image with tags: $PRIMARY_TAG, sha-$GIT_SHA, ts-$TIMESTAMP, latest"
+      echo "Successfully pushed image with tags: $PRIMARY_TAG, $VERSION, sha-$GIT_SHA, ts-$TIMESTAMP, latest"
     EOT
   }
 
