@@ -222,3 +222,12 @@ terraform destroy
 | `lambda.tf` | Lambda function configuration |
 | `lambda/cross_account_s3.py` | Lambda function code |
 | `outputs.tf` | Output values and test commands |
+
+
+## Cleanup
+```sh
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text) && \
+aws s3api delete-objects --bucket cross-account-demo-bucket-${ACCOUNT_ID} \
+  --delete "$(aws s3api list-object-versions --bucket cross-account-demo-bucket-${ACCOUNT_ID} --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' --output json)"
+```
+
