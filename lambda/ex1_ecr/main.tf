@@ -6,7 +6,10 @@ locals {
   account_id = data.aws_caller_identity.current.account_id
   region     = data.aws_region.current.id
   ecr_url    = "${local.account_id}.dkr.ecr.${local.region}.amazonaws.com"
-  image_uri  = "${aws_ecr_repository.lambda.repository_url}:${var.image_tag}"
+
+  # Multi-tag strategy: git SHA + timestamp + latest
+  # The primary tag used for Lambda is the git SHA for immutable deployments
+  image_uri = "${aws_ecr_repository.lambda.repository_url}:${var.image_tag}"
 }
 
 # =============================================================================
@@ -25,19 +28,67 @@ resource "aws_ecr_repository" "lambda" {
   tags = var.tags
 }
 
-# ECR Lifecycle Policy - keep only the latest N images
+# ECR Lifecycle Policy - rolling window with cleanup of unreferenced images
 resource "aws_ecr_lifecycle_policy" "lambda" {
   repository = aws_ecr_repository.lambda.name
 
   policy = jsonencode({
     rules = [
       {
+        # Rule 1: Remove untagged images after 1 day
+        # These are typically intermediate build layers or failed pushes
         rulePriority = 1
-        description  = "Keep only the last ${var.image_retention_count} images"
+        description  = "Remove untagged images after 1 day"
         selection = {
-          tagStatus   = "any"
-          countType   = "imageCountMoreThan"
-          countNumber = var.image_retention_count
+          tagStatus   = "untagged"
+          countType   = "sinceImagePushed"
+          countUnit   = "days"
+          countNumber = 1
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        # Rule 2: Keep only the last N images with sha- prefix (git commits)
+        # This creates the rolling window of deployable images
+        rulePriority = 2
+        description  = "Keep last ${var.image_retention_count} git SHA tagged images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["sha-"]
+          countType     = "imageCountMoreThan"
+          countNumber   = var.image_retention_count
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        # Rule 3: Keep only the last N timestamp-tagged images
+        rulePriority = 3
+        description  = "Keep last ${var.image_retention_count} timestamp tagged images"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["ts-"]
+          countType     = "imageCountMoreThan"
+          countNumber   = var.image_retention_count
+        }
+        action = {
+          type = "expire"
+        }
+      },
+      {
+        # Rule 4: Expire old images that don't match protected patterns
+        # Catches any other tagged images older than 30 days
+        rulePriority = 4
+        description  = "Expire other tagged images older than 30 days"
+        selection = {
+          tagStatus     = "tagged"
+          tagPrefixList = ["dev-", "test-", "build-"]
+          countType     = "sinceImagePushed"
+          countUnit     = "days"
+          countNumber   = 30
         }
         action = {
           type = "expire"
@@ -60,14 +111,34 @@ resource "null_resource" "docker_build_push" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      set -e
+
+      # Generate tags
+      REPO_URL="${aws_ecr_repository.lambda.repository_url}"
+      GIT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "no-git")
+      TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
+      PRIMARY_TAG="${var.image_tag}"
+
+      echo "Building with tags: $PRIMARY_TAG, sha-$GIT_SHA, ts-$TIMESTAMP, latest"
+
       # Login to ECR
       aws ecr get-login-password --region ${local.region} | docker login --username AWS --password-stdin ${local.ecr_url}
 
-      # Build the Docker image
-      docker build -t ${aws_ecr_repository.lambda.repository_url}:${var.image_tag} ${path.module}/src
+      # Build the Docker image with primary tag
+      docker build -t "$REPO_URL:$PRIMARY_TAG" ${path.module}/src
 
-      # Push the image to ECR
-      docker push ${aws_ecr_repository.lambda.repository_url}:${var.image_tag}
+      # Apply additional tags
+      docker tag "$REPO_URL:$PRIMARY_TAG" "$REPO_URL:sha-$GIT_SHA"
+      docker tag "$REPO_URL:$PRIMARY_TAG" "$REPO_URL:ts-$TIMESTAMP"
+      docker tag "$REPO_URL:$PRIMARY_TAG" "$REPO_URL:latest"
+
+      # Push all tags
+      docker push "$REPO_URL:$PRIMARY_TAG"
+      docker push "$REPO_URL:sha-$GIT_SHA"
+      docker push "$REPO_URL:ts-$TIMESTAMP"
+      docker push "$REPO_URL:latest"
+
+      echo "Successfully pushed image with tags: $PRIMARY_TAG, sha-$GIT_SHA, ts-$TIMESTAMP, latest"
     EOT
   }
 
